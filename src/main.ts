@@ -1,6 +1,5 @@
 import { AlpacaClient, AlpacaStream } from '@master-chief/alpaca'
 import { SMA } from "technicalindicators";
-import _ from "lodash";
 import parse from "csv-parse/lib/sync";
 import fs from "fs";
 import { CSVData, Resolution, TrackedStock } from "./types";
@@ -50,7 +49,7 @@ const initializeAverages = async (tickerName: string, resolution: Resolution, sm
         symbol: tickerName,
         timeframe: resolution
     });
-    const closeValues = _.map(initialData.bars, (bar) => bar.c);
+    const closeValues = initialData.bars.map((bar) => bar.c));
 
     const smaSmall = new SMA({ period: smaSmallVal, values: closeValues });
     const smaLarge = new SMA({ period: smaLargeVal, values: closeValues });
