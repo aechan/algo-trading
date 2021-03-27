@@ -23,9 +23,9 @@ const alpaca = new AlpacaClient({
 });
 
 // configurable constants
-const RESOLUTION: Resolution = "1Min";
-const SMA_SMALL = 20;
-const SMA_LARGE = 50;
+const RESOLUTION: Resolution = process.env.RESOLUTION as Resolution || "1Min";
+const SMA_SMALL = process.env.SMA_SMALL || 20;
+const SMA_LARGE = process.env.SMA_LARGE || 50;
 
 const getCurrentTime = () => {
     return new Date();
