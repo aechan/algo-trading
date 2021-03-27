@@ -1,0 +1,24 @@
+{
+  "name": "trading-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --trace-warnings dist/main.js",
+    "test": "node dist/test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@master-chief/alpaca": "^6.1.1",
+    "csv-parse": "^4.15.3",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^8.2.0",
+    "lodash": "^4.17.21",
+    "technicalindicators": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.168"
+  }
+}
