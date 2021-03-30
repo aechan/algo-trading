@@ -1,4 +1,4 @@
-import { AlpacaClient, AlpacaStream } from '@master-chief/alpaca'
+import { AlpacaClient, AlpacaStream, Bar } from '@master-chief/alpaca'
 import { SMA } from "technicalindicators";
 import parse from "csv-parse/lib/sync";
 import fs from "fs";
@@ -23,8 +23,8 @@ const alpaca = new AlpacaClient({
 
 // configurable constants
 const RESOLUTION: Resolution = process.env.RESOLUTION as Resolution || "1Min";
-const SMA_SMALL = process.env.SMA_SMALL || 20;
-const SMA_LARGE = process.env.SMA_LARGE || 50;
+const SMA_SMALL = parseFloat(process.env.SMA_SMALL || "") || 3;
+const SMA_LARGE = parseFloat(process.env.SMA_LARGE || "") || 5;
 
 const getCurrentTime = () => {
     return new Date();
@@ -42,14 +42,14 @@ const getMsForResolution = (smaLarge: number, resolution: Resolution) => {
     }
 }
 const initializeAverages = async (tickerName: string, resolution: Resolution, smaLargeVal: number, smaSmallVal: number) => {
-    const endDate = getCurrentTime();
+    const endDate = new Date(getCurrentTime().getTime());
     const initialData = await alpaca.getBars({
         end: endDate,
         start: new Date(endDate.getTime() - getMsForResolution(smaLargeVal, resolution)),
         symbol: tickerName,
         timeframe: resolution
     });
-    const closeValues = initialData.bars.map((bar) => bar.c));
+    const closeValues = initialData.bars.map((bar) => bar.c);
 
     const smaSmall = new SMA({ period: smaSmallVal, values: closeValues });
     const smaLarge = new SMA({ period: smaLargeVal, values: closeValues });
@@ -117,40 +117,20 @@ const sell = async (stock: TrackedStock) => {
     console.log(`[${getCurrentTime().toISOString()}] SOLD ${stock.tradeAmt} ${stock.ticker}`);
 };
 
-const subscribeToAggUpdates = (stock: TrackedStock, freq: number, resolution: Resolution) => {
-    console.log(`[INFO] Subscribing to ${freq} * ${resolution} updates for ${stock.ticker}`);
-    setInterval(async () => {
-        try {
-            // for testing end date needs to be 1 hr ago
-            const endDate = getCurrentTime();
-            const data = await alpaca.getBars({
-                end: endDate,
-                start: new Date(endDate.getTime() - 15000),
-                symbol: stock.ticker,
-                timeframe: stock.smaResolution
-            });
-            if (data.bars.length === 0) {
-                return;
-            }
-            const nextValue = data.bars[0].c;
-            const nextSmall = stock.smaSmall.nextValue(nextValue);
-            const nextLarge = stock.smaLarge.nextValue(nextValue);
-            if (!nextSmall || !nextLarge) {
-                return;
-            }
+const runModel = async (stock: TrackedStock, bar: Bar) => {
+    const nextValue = bar.c;
+    const nextSmall = stock.smaSmall.nextValue(nextValue);
+    const nextLarge = stock.smaLarge.nextValue(nextValue);
+    if (!nextSmall || !nextLarge) {
+        return;
+    }
 
-            if (nextSmall > nextLarge && stock.lastOrder !== 'BUY') {
-                await buy(stock);
-            } else if (nextSmall < nextLarge && stock.lastOrder !== 'SELL') {
-                await sell(stock);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-
-    }, getMsForResolution(freq, resolution));
-    
-}
+    if (nextSmall > nextLarge && stock.lastOrder !== 'BUY') {
+        await buy(stock);
+    } else if (nextSmall < nextLarge && stock.lastOrder !== 'SELL') {
+        await sell(stock);
+    }
+};
 
 const subscribeToTrades = (stocks: TrackedStock[]) => {
     const stream = new AlpacaStream({
@@ -178,9 +158,25 @@ async function main() {
     console.log(`[INFO] Starting sytem from date ${new Date().toLocaleString()}`);
     const stocks = await initializeData();
     subscribeToTrades(stocks);
-    for (const stock of stocks) {
-        subscribeToAggUpdates(stock, 30, "1Sec");
-    }
+    const stream = new AlpacaStream({
+        credentials: {
+          key: process.env.ALPACA_KEY as string,
+          secret: process.env.ALPACA_SECRET as string,
+          paper: true,
+        },
+        type: 'market_data', // or "account"
+        source: 'iex', // or "sip" depending on your subscription
+    });
+    stream.once('authenticated', () => {
+        stream.subscribe('bars', stocks.map(s => s.ticker));
+        stream.on('bar', (bar) => {
+            const found = stocks.find((s) => s.ticker.toLowerCase() === bar.S.toLowerCase());
+            if (!found) {
+                return;
+            }
+            runModel(found, bar);
+        });
+    });
 }
 
 main().catch(err => console.error(err));
