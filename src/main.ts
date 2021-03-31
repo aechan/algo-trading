@@ -2,10 +2,22 @@ import { AlpacaClient, AlpacaStream, Bar } from '@master-chief/alpaca'
 import { SMA } from "technicalindicators";
 import parse from "csv-parse/lib/sync";
 import fs from "fs";
-import { CSVData, Resolution, TrackedStock } from "./types";
+import { CSVData, Resolution, TrackedStock, Trade } from "./types";
 import dotenv from "dotenv";
+import express from "express";
+import path from "path";
 
+const app = express();
 dotenv.config();
+const trades: Trade[] = [
+    {
+        date: new Date(),
+        price: 100.52,
+        side: "BOUGHT",
+        ticker: "AMC",
+        tradeAmt: 200
+    }
+];
 
 if (!process.env.ALPACA_KEY || !process.env.ALPACA_SECRET) {
     console.error("Alpaca keys are not set in .env. Aborting!");
@@ -93,7 +105,7 @@ const initializeData = async () => {
     return stocks;
 };
 
-const buy = async (stock: TrackedStock) => {
+const buy = async (stock: TrackedStock, bar: Bar) => {
     const order = await alpaca.placeOrder({
         symbol: stock.ticker,
         qty: stock.tradeAmt,
@@ -103,9 +115,16 @@ const buy = async (stock: TrackedStock) => {
     });
     stock.lastOrder = 'BUY';
     console.log(`[${getCurrentTime().toISOString()}] BOUGHT ${stock.tradeAmt} ${stock.ticker}`);
+    trades.push({
+        ticker: stock.ticker,
+        side: 'BOUGHT',
+        date: new Date(),
+        price: bar.c,
+        tradeAmt: stock.tradeAmt
+    });
 };
 
-const sell = async (stock: TrackedStock) => {
+const sell = async (stock: TrackedStock, bar: Bar) => {
     const order = await alpaca.placeOrder({
         symbol: stock.ticker,
         qty: stock.tradeAmt,
@@ -115,6 +134,13 @@ const sell = async (stock: TrackedStock) => {
     });
     stock.lastOrder = 'SELL';
     console.log(`[${getCurrentTime().toISOString()}] SOLD ${stock.tradeAmt} ${stock.ticker}`);
+    trades.push({
+        ticker: stock.ticker,
+        side: 'SOLD',
+        date: new Date(),
+        price: bar.c,
+        tradeAmt: stock.tradeAmt
+    });
 };
 
 const runModel = async (stock: TrackedStock, bar: Bar) => {
@@ -126,9 +152,9 @@ const runModel = async (stock: TrackedStock, bar: Bar) => {
     }
 
     if (nextSmall > nextLarge && stock.lastOrder !== 'BUY') {
-        await buy(stock);
+        await buy(stock, bar);
     } else if (nextSmall < nextLarge && stock.lastOrder !== 'SELL') {
-        await sell(stock);
+        await sell(stock, bar);
     }
 };
 
@@ -141,7 +167,7 @@ const subscribeToTrades = (stocks: TrackedStock[]) => {
         },
         type: 'account', // or "account"
         source: 'iex', // or "sip" depending on your subscription
-      });
+    });
     
     stream.once('authenticated', () => {
         stream.subscribe('trades', stocks.map((s) => s.ticker));
@@ -149,11 +175,36 @@ const subscribeToTrades = (stocks: TrackedStock[]) => {
     });
 }
 
+function sleepUntil(date: Date) {
+    const ms = date.getTime() - Date.now();
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+}
+
 async function main() {
+    
+
     const clock = await alpaca.getClock();
+    app.use(express.static(path.join(__dirname, '..', 'public')));
+    app.get('/trades', (req, res) => {
+        res.json(trades);
+    });
+    
+    app.get('/hours', (req, res) => {
+        res.json({
+            currently_open: clock.is_open,
+            reopening_at: clock.next_open,
+            closing_at: clock.next_close
+        });
+    });
+    const port = process.env.PORT || 8080;
+    app.listen(port, () => {
+        console.log(`app listening at http://localhost:${port}`)
+    });
     if (!clock.is_open) {
-        console.log(`[ERROR] Markets are currently closed. Aborting.`);
-        process.exit(-1);
+        console.log(`[WARN] Markets are currently closed. Sleeping until they open on ${clock.next_open.toLocaleString()}`);
+        await sleepUntil(clock.next_open);
     }
     console.log(`[INFO] Starting sytem from date ${new Date().toLocaleString()}`);
     const stocks = await initializeData();

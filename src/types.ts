@@ -12,3 +12,10 @@ export interface TrackedStock {
     smaLarge: SMA;
     lastOrder: 'BUY' | 'SELL';
 }
+export interface Trade {
+    ticker: string;
+    tradeAmt: number;
+    price: number;
+    date: Date;
+    side: 'BOUGHT' | 'SOLD';
+}
