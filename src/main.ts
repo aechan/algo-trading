@@ -10,13 +10,6 @@ import path from "path";
 const app = express();
 dotenv.config();
 const trades: Trade[] = [
-    {
-        date: new Date(),
-        price: 100.52,
-        side: "BOUGHT",
-        ticker: "AMC",
-        tradeAmt: 200
-    }
 ];
 
 if (!process.env.ALPACA_KEY || !process.env.ALPACA_SECRET) {

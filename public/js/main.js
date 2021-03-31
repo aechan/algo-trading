@@ -14,7 +14,6 @@
         fetch('/hours')
         .then((response) => response.json())
         .then((data) => {
-            console.log(data);
             document.getElementById("open").innerHTML = `⏰ Markets are currently ${data.currently_open ? 'open' : 'closed'}`;
             document.getElementById("next").innerHTML = `Next ${data.currently_open ? "closing at " + new Date(data.closing_at).toLocaleString() : "opening at " + new Date(data.reopening_at).toLocaleString()}`;
         });
