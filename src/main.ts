@@ -24,6 +24,7 @@ const alpaca = new AlpacaClient({
         paper: true,
     },
     rate_limit: true,
+    
 });
 
 // configurable constants
@@ -47,7 +48,7 @@ const getMsForResolution = (smaLarge: number, resolution: Resolution) => {
     }
 }
 const initializeAverages = async (tickerName: string, resolution: Resolution, smaLargeVal: number, smaSmallVal: number) => {
-    const endDate = new Date(getCurrentTime().getTime());
+    const endDate = new Date(getCurrentTime().getTime()-3.6e6);
     const initialData = await alpaca.getBars({
         end: endDate,
         start: new Date(endDate.getTime() - getMsForResolution(smaLargeVal, resolution)),
@@ -137,6 +138,10 @@ const sell = async (stock: TrackedStock, bar: Bar) => {
 };
 
 const runModel = async (stock: TrackedStock, bar: Bar) => {
+    const clock = await alpaca.getClock();
+    if (!clock.is_open) {
+        return;
+    }
     const nextValue = bar.c;
     const nextSmall = stock.smaSmall.nextValue(nextValue);
     const nextLarge = stock.smaLarge.nextValue(nextValue);
@@ -168,23 +173,33 @@ const subscribeToTrades = (stocks: TrackedStock[]) => {
     });
 }
 
-function sleepUntil(date: Date) {
-    const ms = date.getTime() - Date.now();
-    return new Promise((resolve) => {
-      setTimeout(resolve, ms);
-    });
-}
-
 async function main() {
     
+    console.log(`[INFO] Starting sytem from date ${new Date().toLocaleString()}`);
+    const stocks = await initializeData();
 
-    const clock = await alpaca.getClock();
     app.use(express.static(path.join(__dirname, '..', 'public')));
     app.get('/trades', (req, res) => {
         res.json(trades);
     });
+
+    app.get('/stocks', (req, res) => {
+        res.json(stocks);
+    });
+
+    app.get('/value', async (req, res) => {
+        const val = await alpaca.getAccount();
+        
+        res.json({
+            equity: val.equity,
+            buying_power: val.buying_power,
+            gain_loss_pct: ((val.equity-100000)/100000)*100
+        });
+    });
     
-    app.get('/hours', (req, res) => {
+    app.get('/hours', async (req, res) => {
+        const clock = await alpaca.getClock();
+
         res.json({
             currently_open: clock.is_open,
             reopening_at: clock.next_open,
@@ -195,12 +210,6 @@ async function main() {
     app.listen(port, () => {
         console.log(`app listening at http://localhost:${port}`)
     });
-    if (!clock.is_open) {
-        console.log(`[WARN] Markets are currently closed. Sleeping until they open on ${clock.next_open.toLocaleString()}`);
-        await sleepUntil(clock.next_open);
-    }
-    console.log(`[INFO] Starting sytem from date ${new Date().toLocaleString()}`);
-    const stocks = await initializeData();
     subscribeToTrades(stocks);
     const stream = new AlpacaStream({
         credentials: {
