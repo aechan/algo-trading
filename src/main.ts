@@ -9,8 +9,6 @@ import path from "path";
 
 const app = express();
 dotenv.config();
-const trades: Trade[] = [
-];
 
 if (!process.env.ALPACA_KEY || !process.env.ALPACA_SECRET) {
     console.error("Alpaca keys are not set in .env. Aborting!");
@@ -109,13 +107,6 @@ const buy = async (stock: TrackedStock, bar: Bar) => {
     });
     stock.lastOrder = 'BUY';
     console.log(`[${getCurrentTime().toISOString()}] BOUGHT ${stock.tradeAmt} ${stock.ticker}`);
-    trades.push({
-        ticker: stock.ticker,
-        side: 'BOUGHT',
-        date: new Date(),
-        price: bar.c,
-        tradeAmt: stock.tradeAmt
-    });
 };
 
 const sell = async (stock: TrackedStock, bar: Bar) => {
@@ -128,13 +119,6 @@ const sell = async (stock: TrackedStock, bar: Bar) => {
     });
     stock.lastOrder = 'SELL';
     console.log(`[${getCurrentTime().toISOString()}] SOLD ${stock.tradeAmt} ${stock.ticker}`);
-    trades.push({
-        ticker: stock.ticker,
-        side: 'SOLD',
-        date: new Date(),
-        price: bar.c,
-        tradeAmt: stock.tradeAmt
-    });
 };
 
 const runModel = async (stock: TrackedStock, bar: Bar) => {
@@ -179,8 +163,26 @@ async function main() {
     const stocks = await initializeData();
 
     app.use(express.static(path.join(__dirname, '..', 'public')));
-    app.get('/trades', (req, res) => {
-        res.json(trades);
+    app.get('/trades', async (req, res) => {
+        let ord = await alpaca.getOrders({status: "closed", direction: "desc"});
+        ord = ord.sort((a,b) => {
+            if (a.filled_at === b.filled_at)
+                return 0;
+            
+            if (a.filled_at > b.filled_at)
+                return 1;
+            
+            return -1;
+        })
+        res.json(ord.map(o => {
+            return {
+                ticker: o.symbol,
+                tradeAmt: o.filled_qty,
+                price: o.filled_avg_price,
+                date: o.filled_at,
+                side: o.side === 'buy' ? "BOUGHT" : "SOLD"
+            }
+        }));
     });
 
     app.get('/stocks', (req, res) => {
@@ -221,6 +223,7 @@ async function main() {
         source: 'iex', // or "sip" depending on your subscription
     });
     stream.once('authenticated', () => {
+        console.log("authenticated stream");
         stream.subscribe('bars', stocks.map(s => s.ticker));
         stream.on('bar', (bar) => {
             const found = stocks.find((s) => s.ticker.toLowerCase() === bar.S.toLowerCase());
