@@ -282,7 +282,7 @@ html, body {
 .robot {
   position: fixed; /* or absolute */
   bottom: 0;
-  right: 5%;
+  right: 0;
   width: 50%;
 }
 
