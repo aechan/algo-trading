@@ -12,6 +12,7 @@
         fetch('/trades')
             .then((response) => response.json())
             .then((datas) => {
+                document.getElementById("trades").innerHTML = "";
                 for (const data of datas) {
                     const text = document.createTextNode(`[${new Date(data.date).toLocaleString()}]\t${data.side}\t${data.tradeAmt}\t${data.ticker}\t@ $${data.price}`);
                     document.getElementById("trades").prepend(document.createElement("br"));
